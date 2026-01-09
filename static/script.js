@@ -8,6 +8,9 @@ document.addEventListener('DOMContentLoaded', function() {
     checkEnvironments();
     loadRegisteredUsers();
     setupDeepfaceUpload(); // Setup upload và paste cho DeepFace
+    
+    // Kích hoạt môi trường mặc định (face_recognition) khi load trang
+    activateEnvironment('face_recognition');
 });
 
 // Tab Management
@@ -26,9 +29,42 @@ function showTab(tabName) {
     if (tabName === 'face-recognition') {
         document.getElementById('face-recognition-tab').classList.add('active');
         document.querySelectorAll('.tab-btn')[0].classList.add('active');
+        // Kích hoạt môi trường face_recognition
+        activateEnvironment('face_recognition');
     } else if (tabName === 'deepface') {
         document.getElementById('deepface-tab').classList.add('active');
         document.querySelectorAll('.tab-btn')[1].classList.add('active');
+        // Kích hoạt môi trường deepface_recognition
+        activateEnvironment('deepface_recognition');
+    }
+}
+
+// Activate Environment when switching tabs
+async function activateEnvironment(envName) {
+    try {
+        const response = await fetch('/api/activate-environment/' + envName, {
+            method: 'POST'
+        });
+        const data = await response.json();
+        
+        if (!data.success && data.needs_setup) {
+            // Hiển thị thông báo cần thiết lập
+            const envDisplay = envName === 'face_recognition' ? 'Face Recognition' : 'DeepFace';
+            const confirmSetup = confirm(
+                `⚠️ Môi trường ${envDisplay} chưa sẵn sàng!\n\n` +
+                `${data.error}\n\n` +
+                `Bạn có muốn thiết lập ngay bây giờ không?`
+            );
+            
+            if (confirmSetup) {
+                setupEnvironment(envName);
+            }
+        } else if (data.success) {
+            // Môi trường đã sẵn sàng - hiển thị thông báo nhỏ
+            console.log(`✓ Môi trường ${envName} đã được kích hoạt`);
+        }
+    } catch (error) {
+        console.error('Error activating environment:', error);
     }
 }
 
@@ -216,12 +252,26 @@ async function loadRegisteredUsers() {
 }
 
 // Face Recognition Functions
+let recognitionInterval = null;
+
 async function startRecognizeCamera() {
     try {
+        // Nếu camera đã bật, không làm gì
+        if (recognizeStream) {
+            console.log('Camera đã được bật');
+            return;
+        }
+        
         recognizeStream = await navigator.mediaDevices.getUserMedia({ 
             video: { width: 640, height: 480 } 
         });
         document.getElementById('recognize-video').srcObject = recognizeStream;
+        
+        // Bắt đầu nhận diện realtime sau khi camera bật
+        setTimeout(() => {
+            startRealtimeRecognition();
+        }, 1000); // Đợi 1 giây để camera ổn định
+        
     } catch (error) {
         alert('Không thể truy cập camera: ' + error.message);
     }
@@ -233,11 +283,44 @@ function stopRecognizeCamera() {
         document.getElementById('recognize-video').srcObject = null;
         recognizeStream = null;
     }
+    
+    // Dừng nhận diện realtime
+    stopRealtimeRecognition();
+    
+    // Xóa canvas (bounding boxes)
+    const canvas = document.getElementById('recognize-canvas');
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Xóa kết quả nhận diện
+    const resultDiv = document.getElementById('recognize-result');
+    resultDiv.innerHTML = '';
+}
+
+function startRealtimeRecognition() {
+    // Dừng interval cũ nếu đang chạy
+    if (recognitionInterval) {
+        clearInterval(recognitionInterval);
+        recognitionInterval = null;
+    }
+    
+    // Nhận diện mỗi 1.5 giây (tránh quá tải)
+    recognitionInterval = setInterval(() => {
+        recognizeFace();
+    }, 1500);
+    
+    console.log('✓ Realtime recognition started');
+}
+
+function stopRealtimeRecognition() {
+    if (recognitionInterval) {
+        clearInterval(recognitionInterval);
+        recognitionInterval = null;
+    }
 }
 
 async function recognizeFace() {
     if (!recognizeStream) {
-        alert('Vui lòng bật camera trước!');
         return;
     }
     
@@ -251,8 +334,6 @@ async function recognizeFace() {
     
     const imageData = canvas.toDataURL('image/jpeg');
     
-    showLoading('Đang nhận diện khuôn mặt...');
-    
     try {
         const response = await fetch('/api/face-recognition/recognize', {
             method: 'POST',
@@ -265,28 +346,103 @@ async function recognizeFace() {
         });
         
         const data = await response.json();
-        hideLoading();
         
         const resultDiv = document.getElementById('recognize-result');
         
         if (data.success) {
-            resultDiv.innerHTML = `
-                <h3>Kết quả nhận diện:</h3>
-                <p style="font-size: 1.5em; color: #28a745; font-weight: bold;">
-                    ${data.result}
-                </p>
-            `;
+            // VẼ BOUNDING BOXES lên canvas
+            drawBoundingBoxes(canvas, data.faces || []);
+            
+            // Hiển thị kết quả với timestamp
+            const now = new Date().toLocaleTimeString('vi-VN');
+            
+            if (data.faces && data.faces.length > 0) {
+                let facesHTML = '';
+                data.faces.forEach((face, index) => {
+                    const statusColor = face.name === 'Unknown' ? '#dc3545' : '#28a745';
+                    const confidenceText = face.confidence > 0 ? ` (${face.confidence}%)` : '';
+                    
+                    facesHTML += `
+                        <div style="padding: 10px; margin: 5px 0; background: #f8f9fa; border-radius: 5px; border-left: 4px solid ${statusColor};">
+                            <div style="font-size: 1.5em; color: ${statusColor}; font-weight: bold;">
+                                ${face.name}${confidenceText}
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                resultDiv.innerHTML = `
+                    <h3>🔴 Đang nhận diện realtime...</h3>
+                    <div style="margin: 15px 0;">
+                        <strong>Số khuôn mặt: ${data.total_faces}</strong>
+                    </div>
+                    ${facesHTML}
+                    <div style="font-size: 0.9em; color: #6c757d; margin-top: 10px;">
+                        Cập nhật lúc: ${now}
+                    </div>
+                `;
+            } else {
+                resultDiv.innerHTML = `
+                    <h3>🔍 Đang quét...</h3>
+                    <p style="color: #6c757d;">${data.message || 'Chưa phát hiện khuôn mặt'}</p>
+                    <div style="font-size: 0.9em; color: #6c757d;">
+                        Cập nhật lúc: ${now}
+                    </div>
+                `;
+            }
         } else {
+            const now = new Date().toLocaleTimeString('vi-VN');
             resultDiv.innerHTML = `
-                <h3>Lỗi:</h3>
+                <h3>⚠️ Lỗi nhận diện</h3>
                 <p style="color: #dc3545;">${data.error}</p>
+                <div style="font-size: 0.9em; color: #6c757d;">
+                    ${now}
+                </div>
             `;
         }
         
     } catch (error) {
-        hideLoading();
-        alert('Lỗi: ' + error.message);
+        console.error('Recognition error:', error);
     }
+}
+
+// Bounding Box Drawing Function
+function drawBoundingBoxes(canvas, faces) {
+    const ctx = canvas.getContext('2d');
+    
+    // Vẽ bounding box cho mỗi khuôn mặt
+    faces.forEach(face => {
+        if (!face.location) return;
+        
+        const { top, right, bottom, left } = face.location;
+        const width = right - left;
+        const height = bottom - top;
+        
+        // Chọn màu dựa trên tên
+        const color = face.name === 'Unknown' ? '#dc3545' : '#28a745';
+        
+        // Vẽ rectangle
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 3;
+        ctx.strokeRect(left, top, width, height);
+        
+        // Vẽ label background
+        const label = face.confidence > 0 
+            ? `${face.name} (${face.confidence}%)`
+            : face.name;
+        
+        ctx.font = 'bold 16px Arial';
+        const textWidth = ctx.measureText(label).width;
+        const textHeight = 20;
+        
+        // Background cho text
+        ctx.fillStyle = color;
+        ctx.fillRect(left, top - textHeight - 5, textWidth + 10, textHeight + 5);
+        
+        // Vẽ text
+        ctx.fillStyle = 'white';
+        ctx.fillText(label, left + 5, top - 8);
+    });
 }
 
 // DeepFace Functions - Upload & Paste
@@ -408,34 +564,33 @@ async function analyzeFaceFromImage() {
         const resultDiv = document.getElementById('deepface-result');
         
         if (data.success) {
-            const result = data.result;
             resultDiv.innerHTML = `
-                <h3>Kết quả phân tích:</h3>
+                <h3>✅ Kết quả phân tích:</h3>
                 <div class="analysis-grid">
                     <div class="analysis-item">
                         <h4>👤 Giới tính</h4>
-                        <div class="value">${result.gender}</div>
-                        <div class="confidence">${result.gender_confidence}%</div>
+                        <div class="value">${data.gender}</div>
+                        <div class="confidence">${data.gender_confidence}%</div>
                     </div>
                     <div class="analysis-item">
                         <h4>🎂 Tuổi</h4>
-                        <div class="value">${result.age} tuổi</div>
+                        <div class="value">${data.age} tuổi</div>
                     </div>
                     <div class="analysis-item">
                         <h4>😊 Cảm xúc</h4>
-                        <div class="value">${result.emotion}</div>
-                        <div class="confidence">${result.emotion_confidence}%</div>
+                        <div class="value">${data.emotion}</div>
+                        <div class="confidence">${data.emotion_confidence}%</div>
                     </div>
                     <div class="analysis-item">
                         <h4>🌍 Dân tộc</h4>
-                        <div class="value">${result.race}</div>
-                        <div class="confidence">${result.race_confidence}%</div>
+                        <div class="value">${data.race}</div>
+                        <div class="confidence">${data.race_confidence}%</div>
                     </div>
                 </div>
             `;
         } else {
             resultDiv.innerHTML = `
-                <h3>Lỗi:</h3>
+                <h3>❌ Lỗi:</h3>
                 <p style="color: #dc3545;">${data.error}</p>
             `;
         }

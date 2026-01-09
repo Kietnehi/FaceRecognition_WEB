@@ -72,12 +72,13 @@
 
                 <!-- Recognition Section -->
                 <div class="card">
-                    <h2>🔎 Nhận diện khuôn mặt</h2>
-                    <video id="recognize-video" autoplay></video>
-                    <canvas id="recognize-canvas" style="display:none;"></canvas>
+                    <h2>🔎 Nhận diện khuôn mặt (Realtime)</h2>
+                    <div class="video-container">
+                        <video id="recognize-video" autoplay></video>
+                        <canvas id="recognize-canvas"></canvas>
+                    </div>
                     <div class="button-group">
-                        <button class="btn btn-primary" onclick="startRecognizeCamera()">📷 Bật Camera</button>
-                        <button class="btn btn-success" onclick="recognizeFace()">🔍 Nhận Diện</button>
+                        <button class="btn btn-primary" onclick="startRecognizeCamera()">📷 Bật Camera & Nhận Diện</button>
                         <button class="btn btn-danger" onclick="stopRecognizeCamera()">✕ Tắt Camera</button>
                     </div>
                     <div id="recognize-result" class="result-box"></div>

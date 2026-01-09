@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+dist/
+*.egg-info/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# Environments
+.env
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Project specific
+uploads/*
+!uploads/.gitkeep
+dataset/*
+!dataset/.gitkeep
+*.log
+
+# Temporary files
+temp_*.jpg
+temp_*.png
+*.tmp
+
+# DeepFace models cache
+.deepface/

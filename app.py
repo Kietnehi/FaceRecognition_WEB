@@ -9,6 +9,8 @@ import sys
 import cv2
 import base64
 import numpy as np
+import json
+import requests
 from env_manager import CondaEnvironmentManager
 
 app = Flask(__name__)
@@ -21,6 +23,23 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 # Khởi tạo Environment Manager
 env_manager = CondaEnvironmentManager()
 
+# Service URLs - các service riêng biệt chạy trong môi trường Anaconda
+FACE_RECOGNITION_SERVICE = 'http://localhost:5001'
+DEEPFACE_SERVICE = 'http://localhost:5002'
+REQUEST_TIMEOUT = 30  # seconds
+
+def check_service_health(service_url, service_name):
+    """Kiểm tra health của service"""
+    try:
+        response = requests.get(f'{service_url}/health', timeout=2)
+        if response.status_code == 200:
+            return True, response.json()
+        return False, None
+    except Exception as e:
+        return False, str(e)
+
+
+
 @app.route('/')
 def index():
     """Trang chủ"""
@@ -28,9 +47,11 @@ def index():
 
 @app.route('/api/check-environments', methods=['GET'])
 def check_environments():
-    """API kiểm tra trạng thái các môi trường"""
+    """API kiểm tra trạng thái các môi trường và services"""
     try:
         status = {}
+        
+        # Kiểm tra môi trường Anaconda
         for env_name in env_manager.envs.keys():
             env_exists = env_manager.check_env_exists(env_name)
             packages_ok = env_manager.check_packages_installed(env_name) if env_exists else False
@@ -40,6 +61,23 @@ def check_environments():
                 'packages_installed': packages_ok,
                 'ready': env_exists and packages_ok
             }
+        
+        # Kiểm tra services
+        fr_healthy, fr_info = check_service_health(FACE_RECOGNITION_SERVICE, 'face_recognition')
+        df_healthy, df_info = check_service_health(DEEPFACE_SERVICE, 'deepface')
+        
+        status['services'] = {
+            'face_recognition': {
+                'running': fr_healthy,
+                'url': FACE_RECOGNITION_SERVICE,
+                'info': fr_info
+            },
+            'deepface': {
+                'running': df_healthy,
+                'url': DEEPFACE_SERVICE,
+                'info': df_info
+            }
+        }
         
         return jsonify({
             'success': True,
@@ -67,6 +105,47 @@ def setup_environment(env_name):
             'success': success,
             'message': f'Môi trường {env_name} đã được thiết lập' if success else 'Có lỗi xảy ra'
         })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/activate-environment/<env_name>', methods=['POST'])
+def activate_environment(env_name):
+    """API kích hoạt môi trường (kiểm tra và tự động thiết lập nếu cần)"""
+    try:
+        if env_name not in env_manager.envs:
+            return jsonify({
+                'success': False,
+                'error': f'Môi trường {env_name} không hợp lệ'
+            }), 400
+        
+        # Kiểm tra môi trường có sẵn sàng không
+        env_exists = env_manager.check_env_exists(env_name)
+        
+        if not env_exists:
+            return jsonify({
+                'success': False,
+                'needs_setup': True,
+                'error': f'Môi trường {env_name} chưa được thiết lập'
+            })
+        
+        packages_ok = env_manager.check_packages_installed(env_name)
+        
+        if not packages_ok:
+            return jsonify({
+                'success': False,
+                'needs_setup': True,
+                'error': f'Môi trường {env_name} thiếu các packages cần thiết'
+            })
+        
+        return jsonify({
+            'success': True,
+            'message': f'Môi trường {env_name} đã sẵn sàng',
+            'needs_setup': False
+        })
+        
     except Exception as e:
         return jsonify({
             'success': False,
@@ -110,6 +189,12 @@ def register_face():
         filename = os.path.join(user_folder, f'img_{count}.jpg')
         cv2.imwrite(filename, image)
         
+        # QUAN TRỌNG: Thông báo cho service reload dataset
+        try:
+            requests.post(f'{FACE_RECOGNITION_SERVICE}/reload-dataset', timeout=5)
+        except:
+            pass  # Không báo lỗi nếu service chưa chạy
+        
         return jsonify({
             'success': True,
             'message': f'Đã lưu ảnh {count + 1} cho {name}',
@@ -123,14 +208,15 @@ def register_face():
 
 @app.route('/api/face-recognition/recognize', methods=['POST'])
 def recognize_face():
-    """API nhận diện khuôn mặt"""
+    """API nhận diện khuôn mặt - Forward request đến face_recognition_service"""
     try:
-        # Kiểm tra môi trường
-        if not env_manager.check_env_exists('face_recognition'):
+        # Kiểm tra service có chạy không
+        service_healthy, _ = check_service_health(FACE_RECOGNITION_SERVICE, 'face_recognition')
+        if not service_healthy:
             return jsonify({
                 'success': False,
-                'error': 'Môi trường face_recognition chưa được thiết lập'
-            }), 400
+                'error': 'Face Recognition Service chưa chạy. Vui lòng khởi động service trước.'
+            }), 503
         
         data = request.json
         image_data = data.get('image')
@@ -141,37 +227,25 @@ def recognize_face():
                 'error': 'Không có dữ liệu ảnh'
             }), 400
         
-        # Lưu ảnh tạm
-        temp_image_path = os.path.join(app.config['UPLOAD_FOLDER'], 'temp_recognize.jpg')
-        image_bytes = base64.b64decode(image_data.split(',')[1])
-        with open(temp_image_path, 'wb') as f:
-            f.write(image_bytes)
-        
-        # Chạy script nhận diện trong môi trường face_recognition
-        result = subprocess.run(
-            'conda run -n face_recognition python face_recognition_service.py ' + temp_image_path,
-            capture_output=True,
-            text=True,
-            timeout=30,
-            shell=True  # Thêm shell=True cho Windows
+        # Forward request đến service
+        response = requests.post(
+            f'{FACE_RECOGNITION_SERVICE}/recognize',
+            json={'image': image_data},
+            timeout=REQUEST_TIMEOUT
         )
         
-        # Xóa file tạm
-        if os.path.exists(temp_image_path):
-            os.remove(temp_image_path)
+        return jsonify(response.json()), response.status_code
         
-        if result.returncode == 0:
-            # Parse kết quả
-            output = result.stdout.strip()
-            return jsonify({
-                'success': True,
-                'result': output
-            })
-        else:
-            return jsonify({
-                'success': False,
-                'error': result.stderr
-            }), 500
+    except requests.exceptions.Timeout:
+        return jsonify({
+            'success': False,
+            'error': 'Request timeout - Vui lòng thử lại'
+        }), 504
+    except requests.exceptions.ConnectionError:
+        return jsonify({
+            'success': False,
+            'error': 'Không thể kết nối đến Face Recognition Service'
+        }), 503
     except Exception as e:
         return jsonify({
             'success': False,
@@ -180,14 +254,15 @@ def recognize_face():
 
 @app.route('/api/deepface/analyze', methods=['POST'])
 def analyze_face():
-    """API phân tích khuôn mặt với DeepFace"""
+    """API phân tích khuôn mặt với DeepFace - Forward request đến deepface_service"""
     try:
-        # Kiểm tra môi trường
-        if not env_manager.check_env_exists('deepface_recognition'):
+        # Kiểm tra service có chạy không
+        service_healthy, _ = check_service_health(DEEPFACE_SERVICE, 'deepface')
+        if not service_healthy:
             return jsonify({
                 'success': False,
-                'error': 'Môi trường deepface_recognition chưa được thiết lập'
-            }), 400
+                'error': 'DeepFace Service chưa chạy. Vui lòng khởi động service trước.'
+            }), 503
         
         data = request.json
         image_data = data.get('image')
@@ -198,42 +273,29 @@ def analyze_face():
                 'error': 'Không có dữ liệu ảnh'
             }), 400
         
-        # Lưu ảnh tạm
-        temp_image_path = os.path.join(app.config['UPLOAD_FOLDER'], 'temp_analyze.jpg')
-        image_bytes = base64.b64decode(image_data.split(',')[1])
-        with open(temp_image_path, 'wb') as f:
-            f.write(image_bytes)
-        
-        # Chạy script phân tích trong môi trường deepface_recognition
-        result = subprocess.run(
-            'conda run -n deepface_recognition python deepface_service.py ' + temp_image_path,
-            capture_output=True,
-            text=True,
-            timeout=30,
-            shell=True  # Thêm shell=True cho Windows
+        # Forward request đến service
+        response = requests.post(
+            f'{DEEPFACE_SERVICE}/analyze',
+            json={'image': image_data},
+            timeout=REQUEST_TIMEOUT
         )
         
-        # Xóa file tạm
-        if os.path.exists(temp_image_path):
-            os.remove(temp_image_path)
+        return jsonify(response.json()), response.status_code
         
-        if result.returncode == 0:
-            # Parse kết quả JSON
-            import json
-            output = json.loads(result.stdout.strip())
-            return jsonify({
-                'success': True,
-                'result': output
-            })
-        else:
-            return jsonify({
-                'success': False,
-                'error': result.stderr
-            }), 500
+    except requests.exceptions.Timeout:
+        return jsonify({
+            'success': False,
+            'error': 'Request timeout - Phân tích mất quá nhiều thời gian'
+        }), 504
+    except requests.exceptions.ConnectionError:
+        return jsonify({
+            'success': False,
+            'error': 'Không thể kết nối đến DeepFace Service'
+        }), 503
     except Exception as e:
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': f'Lỗi không xác định: {str(e)}'
         }), 500
 
 @app.route('/api/get-registered-users', methods=['GET'])
