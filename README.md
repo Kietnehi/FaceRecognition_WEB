@@ -9,6 +9,7 @@ Hệ thống nhận diện và phân tích khuôn mặt sử dụng Face Recogni
   <img src="./image/anaconda.jpg" width="200" alt="Anaconda"/>
   <img src="./image/Opencv.png" width="200" alt="OpenCV"/>
 </p>
+
 ## 🎬 GIF
 
 ![GIF](output.gif)
