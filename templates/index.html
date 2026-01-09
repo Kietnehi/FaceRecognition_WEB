@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Recognition & Analysis System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎭 HỆ THỐNG NHẬN DIỆN & PHÂN TÍCH KHUÔN MẶT</h1>
+            <p class="subtitle">Face Recognition & DeepFace Analysis</p>
+        </header>
+
+        <!-- Environment Status -->
+        <div class="env-status-section">
+            <h2>📊 Trạng thái môi trường</h2>
+            <div class="env-status-cards">
+                <div class="env-card" id="env-face-recognition">
+                    <h3>Face Recognition</h3>
+                    <div class="status-indicator">
+                        <span class="status-dot"></span>
+                        <span class="status-text">Đang kiểm tra...</span>
+                    </div>
+                    <button class="btn-setup" onclick="setupEnvironment('face_recognition')">Thiết lập</button>
+                </div>
+                <div class="env-card" id="env-deepface">
+                    <h3>DeepFace</h3>
+                    <div class="status-indicator">
+                        <span class="status-dot"></span>
+                        <span class="status-text">Đang kiểm tra...</span>
+                    </div>
+                    <button class="btn-setup" onclick="setupEnvironment('deepface_recognition')">Thiết lập</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Tabs -->
+        <div class="tabs">
+            <button class="tab-btn active" onclick="showTab('face-recognition')">
+                👤 Nhận Diện Khuôn Mặt
+            </button>
+            <button class="tab-btn" onclick="showTab('deepface')">
+                🔍 Phân Tích DeepFace
+            </button>
+        </div>
+
+        <!-- Face Recognition Tab -->
+        <div id="face-recognition-tab" class="tab-content active">
+            <div class="content-grid">
+                <!-- Register Section -->
+                <div class="card">
+                    <h2>📝 Đăng ký khuôn mặt</h2>
+                    <div class="input-group">
+                        <label for="user-name">Tên người dùng:</label>
+                        <input type="text" id="user-name" placeholder="Nhập tên...">
+                    </div>
+                    <video id="register-video" autoplay></video>
+                    <canvas id="register-canvas" style="display:none;"></canvas>
+                    <div class="button-group">
+                        <button class="btn btn-primary" onclick="startRegisterCamera()">📷 Bật Camera</button>
+                        <button class="btn btn-success" onclick="captureRegister()">✓ Chụp & Lưu</button>
+                        <button class="btn btn-danger" onclick="stopRegisterCamera()">✕ Tắt Camera</button>
+                    </div>
+                    <div id="register-status" class="status-message"></div>
+                    <div class="registered-users">
+                        <h3>Danh sách người dùng đã đăng ký:</h3>
+                        <ul id="user-list"></ul>
+                    </div>
+                </div>
+
+                <!-- Recognition Section -->
+                <div class="card">
+                    <h2>🔎 Nhận diện khuôn mặt</h2>
+                    <video id="recognize-video" autoplay></video>
+                    <canvas id="recognize-canvas" style="display:none;"></canvas>
+                    <div class="button-group">
+                        <button class="btn btn-primary" onclick="startRecognizeCamera()">📷 Bật Camera</button>
+                        <button class="btn btn-success" onclick="recognizeFace()">🔍 Nhận Diện</button>
+                        <button class="btn btn-danger" onclick="stopRecognizeCamera()">✕ Tắt Camera</button>
+                    </div>
+                    <div id="recognize-result" class="result-box"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- DeepFace Tab -->
+        <div id="deepface-tab" class="tab-content">
+            <div class="card card-large">
+                <h2>🧠 Phân tích DeepFace</h2>
+                <p class="description">Phân tích tuổi, giới tính, cảm xúc và nhóm dân tộc từ khuôn mặt</p>
+                
+                <!-- Upload/Paste Area -->
+                <div class="upload-area" id="upload-area">
+                    <div class="upload-icon">📷</div>
+                    <p class="upload-text">Kéo thả ảnh vào đây, hoặc nhấn để chọn file</p>
+                    <p class="upload-hint">Hoặc nhấn Ctrl+V để paste ảnh từ clipboard</p>
+                    <input type="file" id="image-upload" accept="image/*" style="display:none;">
+                </div>
+                
+                <!-- Preview Area -->
+                <div id="image-preview-container" style="display:none;">
+                    <img id="image-preview" alt="Preview">
+                    <button class="btn btn-danger btn-small" onclick="clearImage()">✕ Xóa ảnh</button>
+                </div>
+                
+                <canvas id="deepface-canvas" style="display:none;"></canvas>
+                
+                <div class="button-group">
+                    <button class="btn btn-success" onclick="analyzeFaceFromImage()">🔬 Phân Tích</button>
+                </div>
+                
+                <div id="deepface-result" class="deepface-result"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay">
+        <div class="spinner"></div>
+        <p id="loading-text">Đang xử lý...</p>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
