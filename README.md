@@ -2,6 +2,21 @@
 
 A facial recognition and analysis system using Face Recognition and DeepFace with a modern web interface.
 
+![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python&logoColor=white)
+![Flask](https://img.shields.io/badge/Flask-2.3-black?logo=flask&logoColor=white)
+![OpenCV](https://img.shields.io/badge/OpenCV-4.12-blue?logo=opencv&logoColor=white)
+![DeepFace](https://img.shields.io/badge/DeepFace-0.0.96-orange)
+![FaceRecognition](https://img.shields.io/badge/FaceRecognition-latest-brightgreen)
+![Realtime Recognition](https://img.shields.io/badge/Realtime-FaceRecognition-brightgreen)
+![DeepFace Analysis](https://img.shields.io/badge/DeepFace-Analysis-orange)
+![Accuracy](https://img.shields.io/badge/Accuracy-76.86%25-blue)
+![Emotion Detection](https://img.shields.io/badge/Emotion-96.68%25-yellow)
+![License](https://img.shields.io/badge/License-MIT-green)
+![GitHub Stars](https://img.shields.io/github/stars/Kietnehi/FaceRecognition_WEB?style=social)
+![GitHub Forks](https://img.shields.io/github/forks/Kietnehi/FaceRecognition_WEB?style=social)
+![GitHub](https://img.shields.io/badge/GitHub-Kietnehi-black?logo=github&logoColor=white)
+
+
 
 <p align="center">
   <img src="./image/flask.png" width="200" alt="Flask"/>
